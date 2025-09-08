@@ -38,32 +38,44 @@ public class UserController extends AbstractHttpController {
     }
     
     private void getAllUsers(RoutingContext context) {
-        handleAsync(context, () -> {
-            logger.info("Fetching all users");
-            // Simulate database operation
-            Thread.sleep(100);
-            
-            List<User> users = new ArrayList<>(userStore.values());
-            sendJsonResponse(context, users);
-            return null;
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Fetching all users");
+                // Simulate database operation
+                Thread.sleep(100);
+                
+                List<User> users = new ArrayList<>(userStore.values());
+                sendJsonResponse(context, users);
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error fetching users", e);
+                promise.fail(e);
+            }
         });
     }
     
     private void getUserById(RoutingContext context) {
         String userId = context.pathParam("id");
         
-        handleAsync(context, () -> {
-            logger.info("Fetching user with ID: {}", userId);
-            // Simulate database lookup
-            Thread.sleep(50);
-            
-            User user = userStore.get(userId);
-            if (user != null) {
-                sendJsonResponse(context, user);
-            } else {
-                sendErrorResponse(context, "User not found", 404);
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Fetching user with ID: {}", userId);
+                // Simulate database lookup
+                Thread.sleep(50);
+                
+                User user = userStore.get(userId);
+                if (user != null) {
+                    sendJsonResponse(context, user);
+                } else {
+                    sendErrorResponse(context, "User not found", 404);
+                }
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error fetching user {}", userId, e);
+                promise.fail(e);
             }
-            return null;
         });
     }
     
@@ -75,17 +87,23 @@ public class UserController extends AbstractHttpController {
             return;
         }
         
-        handleAsync(context, () -> {
-            logger.info("Creating new user: {}", newUser.getName());
-            // Simulate database save operation
-            Thread.sleep(200);
-            
-            String id = String.valueOf(System.currentTimeMillis());
-            newUser.setId(id);
-            userStore.put(id, newUser);
-            
-            sendJsonResponse(context, newUser, 201);
-            return null;
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Creating new user: {}", newUser.getName());
+                // Simulate database save operation
+                Thread.sleep(200);
+                
+                String id = String.valueOf(System.currentTimeMillis());
+                newUser.setId(id);
+                userStore.put(id, newUser);
+                
+                sendJsonResponse(context, newUser, 201);
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error creating user", e);
+                promise.fail(e);
+            }
         });
     }
     
@@ -98,38 +116,50 @@ public class UserController extends AbstractHttpController {
             return;
         }
         
-        handleAsync(context, () -> {
-            logger.info("Updating user with ID: {}", userId);
-            // Simulate database update operation
-            Thread.sleep(150);
-            
-            User existingUser = userStore.get(userId);
-            if (existingUser == null) {
-                sendErrorResponse(context, "User not found", 404);
-            } else {
-                updatedUser.setId(userId);
-                userStore.put(userId, updatedUser);
-                sendJsonResponse(context, updatedUser);
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Updating user with ID: {}", userId);
+                // Simulate database update operation
+                Thread.sleep(150);
+                
+                User existingUser = userStore.get(userId);
+                if (existingUser == null) {
+                    sendErrorResponse(context, "User not found", 404);
+                } else {
+                    updatedUser.setId(userId);
+                    userStore.put(userId, updatedUser);
+                    sendJsonResponse(context, updatedUser);
+                }
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error updating user {}", userId, e);
+                promise.fail(e);
             }
-            return null;
         });
     }
     
     private void deleteUser(RoutingContext context) {
         String userId = context.pathParam("id");
         
-        handleAsync(context, () -> {
-            logger.info("Deleting user with ID: {}", userId);
-            // Simulate database delete operation
-            Thread.sleep(100);
-            
-            User deletedUser = userStore.remove(userId);
-            if (deletedUser != null) {
-                sendJsonResponse(context, new JsonObject().put("message", "User deleted successfully"));
-            } else {
-                sendErrorResponse(context, "User not found", 404);
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Deleting user with ID: {}", userId);
+                // Simulate database delete operation
+                Thread.sleep(100);
+                
+                User deletedUser = userStore.remove(userId);
+                if (deletedUser != null) {
+                    sendJsonResponse(context, new JsonObject().put("message", "User deleted successfully"));
+                } else {
+                    sendErrorResponse(context, "User not found", 404);
+                }
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error deleting user {}", userId, e);
+                promise.fail(e);
             }
-            return null;
         });
     }
     
@@ -137,26 +167,33 @@ public class UserController extends AbstractHttpController {
         String userId = context.pathParam("id");
         
         // Use worker executor for CPU-intensive operations
-        handleAsyncWithWorker(context, () -> {
-            logger.info("Performing heavy operation for user: {}", userId);
-            
-            User user = userStore.get(userId);
-            if (user == null) {
-                sendErrorResponse(context, "User not found", 404);
-                return null;
+        handleAsyncWithWorker(context, promise -> {
+            try {
+                logger.info("Performing heavy operation for user: {}", userId);
+                
+                User user = userStore.get(userId);
+                if (user == null) {
+                    sendErrorResponse(context, "User not found", 404);
+                    promise.complete();
+                    return;
+                }
+                
+                // Simulate heavy CPU-bound operation
+                int result = performComplexCalculation();
+                
+                JsonObject response = new JsonObject()
+                    .put("userId", userId)
+                    .put("userName", user.getName())
+                    .put("calculationResult", result)
+                    .put("processingTime", "Heavy operation completed");
+                
+                sendJsonResponse(context, response);
+                promise.complete();
+                
+            } catch (Exception e) {
+                logger.error("Error in heavy operation for user {}", userId, e);
+                promise.fail(e);
             }
-            
-            // Simulate heavy CPU-bound operation
-            int result = performComplexCalculation();
-            
-            JsonObject response = new JsonObject()
-                .put("userId", userId)
-                .put("userName", user.getName())
-                .put("calculationResult", result)
-                .put("processingTime", "Heavy operation completed");
-            
-            sendJsonResponse(context, response);
-            return null;
         });
     }
     

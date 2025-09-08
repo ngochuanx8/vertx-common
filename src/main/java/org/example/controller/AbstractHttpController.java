@@ -1,6 +1,8 @@
 package org.example.controller;
 
 import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
 import io.vertx.core.WorkerExecutor;
 import io.vertx.core.http.HttpServerResponse;
@@ -23,12 +25,12 @@ public abstract class AbstractHttpController {
         this.objectMapper = new ObjectMapper();
     }
     
-    protected <T> Future<T> executeBlocking(java.util.concurrent.Callable<T> blockingCode) {
-        return vertx.executeBlocking(blockingCode, false);
+    protected <T> Future<T> executeBlocking(Handler<Promise<T>> blockingCodeHandler) {
+        return vertx.executeBlocking(blockingCodeHandler, false);
     }
     
-    protected <T> Future<T> executeBlockingWithWorker(java.util.concurrent.Callable<T> blockingCode) {
-        return workerExecutor.executeBlocking(blockingCode);
+    protected <T> Future<T> executeBlockingWithWorker(Handler<Promise<T>> blockingCodeHandler) {
+        return workerExecutor.executeBlocking(blockingCodeHandler, false);
     }
     
     protected void sendJsonResponse(RoutingContext context, Object data) {
@@ -72,7 +74,7 @@ public abstract class AbstractHttpController {
     
     protected JsonObject getRequestBody(RoutingContext context) {
         try {
-            return context.body().asJsonObject();
+            return context.getBodyAsJson();
         } catch (Exception e) {
             logger.warn("Invalid JSON in request body", e);
             return null;
@@ -81,7 +83,7 @@ public abstract class AbstractHttpController {
     
     protected <T> T parseRequestBody(RoutingContext context, Class<T> clazz) {
         try {
-            String body = context.body().asString();
+            String body = context.getBodyAsString();
             return objectMapper.readValue(body, clazz);
         } catch (Exception e) {
             logger.warn("Error parsing request body to {}", clazz.getSimpleName(), e);
@@ -89,9 +91,16 @@ public abstract class AbstractHttpController {
         }
     }
     
-    protected void handleAsync(RoutingContext context, java.util.concurrent.Callable<Void> blockingCode) {
-        executeBlocking(blockingCode).onSuccess(result -> {
-            // Success handled by the blocking code itself
+    protected void handleAsync(RoutingContext context, Handler<Promise<Object>> asyncHandler) {
+        executeBlocking(promise -> {
+            try {
+                asyncHandler.handle(promise);
+            } catch (Exception e) {
+                logger.error("Error in async handler", e);
+                promise.fail(e);
+            }
+        }).onSuccess(result -> {
+            // Success handled by the async handler itself
         }).onFailure(throwable -> {
             logger.error("Async operation failed", throwable);
             if (!context.response().ended()) {
@@ -100,9 +109,16 @@ public abstract class AbstractHttpController {
         });
     }
     
-    protected void handleAsyncWithWorker(RoutingContext context, java.util.concurrent.Callable<Void> blockingCode) {
-        executeBlockingWithWorker(blockingCode).onSuccess(result -> {
-            // Success handled by the blocking code itself
+    protected void handleAsyncWithWorker(RoutingContext context, Handler<Promise<Object>> asyncHandler) {
+        executeBlockingWithWorker(promise -> {
+            try {
+                asyncHandler.handle(promise);
+            } catch (Exception e) {
+                logger.error("Error in worker async handler", e);
+                promise.fail(e);
+            }
+        }).onSuccess(result -> {
+            // Success handled by the async handler itself
         }).onFailure(throwable -> {
             logger.error("Worker async operation failed", throwable);
             if (!context.response().ended()) {

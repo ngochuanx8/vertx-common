@@ -1,0 +1,28 @@
+// Alternative approach: Force different event loop contexts
+// Replace the server creation with this if SO_REUSEPORT doesn't work:
+
+for (int i = 0; i < serverInstances; i++) {
+    final int serverIndex = i;
+    
+    // Get specific event loop context
+    Context eventLoopContext = vertx.getOrCreateContext();
+    eventLoopContext.runOnContext(v -> {
+        vertx.createHttpServer(new HttpServerOptions()
+                 .setPort(HTTP_PORT)
+                 .setHost("0.0.0.0")
+                 .setReusePort(true)
+                 .setTcpKeepAlive(true)
+                 .setReuseAddress(true))
+             .requestHandler(router)
+             .listen(result -> {
+                 String threadName = Thread.currentThread().getName();
+                 if (result.succeeded()) {
+                     logger.info("HTTP server instance {} started on {} (thread: {})", 
+                               serverIndex, HTTP_PORT, threadName);
+                 } else {
+                     logger.error("Failed to start HTTP server instance {} on thread {}", 
+                               serverIndex, threadName, result.cause());
+                 }
+             });
+    });
+}

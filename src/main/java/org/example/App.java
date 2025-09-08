@@ -2,80 +2,59 @@ package org.example;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
-import io.vertx.core.WorkerExecutor;
-import io.vertx.ext.web.Router;
-import io.vertx.ext.web.handler.BodyHandler;
-import org.example.controller.UserController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class App {
     
     private static final Logger logger = LoggerFactory.getLogger(App.class);
-    private static final int HTTP_PORT = 8080;
-    private static final String WORKER_POOL_NAME = "worker-pool";
-    private static final int WORKER_POOL_SIZE = 10;
-    private static final long WORKER_MAX_EXECUTE_TIME = 60000; // 60 seconds
     
     public static void main(String[] args) {
-        VertxOptions options = new VertxOptions();
+        // Dynamic CPU detection and thread calculation
+        int availableCpus = Runtime.getRuntime().availableProcessors();
+        int eventLoopThreads = availableCpus * 2; // Vert.x best practice: 2x CPU cores
+        int verticleInstances = eventLoopThreads;  // Match verticles to event loops for full utilization
+        int workerPoolSize = verticleInstances * 15; // 15 workers per verticle
+        int internalBlockingPool = Math.max(20, availableCpus * 2);
+        
+        logger.info("=== Thread Configuration Analysis ===");
+        logger.info("Available CPU cores: {}", availableCpus);
+        logger.info("Event loop threads: {} (2x CPU cores)", eventLoopThreads);
+        logger.info("Verticle instances: {} (1 per event loop thread)", verticleInstances);
+        logger.info("Worker pool size: {} ({} workers per verticle)", workerPoolSize, 15);
+        logger.info("Internal blocking pool: {}", internalBlockingPool);
+        logger.info("=========================================");
+        
+        VertxOptions options = new VertxOptions()
+            .setEventLoopPoolSize(eventLoopThreads)
+            .setWorkerPoolSize(workerPoolSize)
+            .setInternalBlockingPoolSize(internalBlockingPool);
+        
         Vertx vertx = Vertx.vertx(options);
         
-        // Create worker executor
-        WorkerExecutor workerExecutor = vertx.createSharedWorkerExecutor(
-            WORKER_POOL_NAME, 
-            WORKER_POOL_SIZE, 
-            WORKER_MAX_EXECUTE_TIME
-        );
+        // Deploy multiple instances of the HTTP server verticle
+        // Vert.x will automatically distribute them across event loop threads
+        // and handle request sharing using round-robin
+        io.vertx.core.DeploymentOptions deploymentOptions = new io.vertx.core.DeploymentOptions()
+            .setInstances(verticleInstances);
         
-        // Setup HTTP server
-        setupHttpServer(vertx, workerExecutor);
+        vertx.deployVerticle("org.example.HttpServerVerticle", deploymentOptions, result -> {
+            if (result.succeeded()) {
+                logger.info("Successfully deployed {} HttpServerVerticle instances", verticleInstances);
+                logger.info("Deployment ID: {}", result.result());
+                logger.info("Application ready! Each verticle runs on a different event loop thread.");
+                logger.info("Vert.x handles request sharing automatically using round-robin strategy.");
+                logger.info("Access the application at: http://localhost:8080");
+            } else {
+                logger.error("Failed to deploy HttpServerVerticle instances", result.cause());
+                System.exit(1);
+            }
+        });
         
         // Graceful shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down application...");
-            workerExecutor.close();
             vertx.close();
         }));
-    }
-    
-    private static void setupHttpServer(Vertx vertx, WorkerExecutor workerExecutor) {
-        Router router = Router.router(vertx);
-        
-        // Global handlers
-        router.route().handler(BodyHandler.create());
-        
-        // CORS handler (optional)
-        router.route().handler(ctx -> {
-            ctx.response()
-               .putHeader("Access-Control-Allow-Origin", "*")
-               .putHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-               .putHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-            ctx.next();
-        });
-        
-        // Setup controllers
-        UserController userController = new UserController(vertx, workerExecutor);
-        userController.setupRoutes(router);
-        
-        // Health check endpoint
-        router.get("/health").handler(ctx -> {
-            ctx.response()
-               .putHeader("Content-Type", "application/json")
-               .end("{\"status\":\"UP\",\"timestamp\":\"" + System.currentTimeMillis() + "\"}");
-        });
-        
-        // Create HTTP server
-        vertx.createHttpServer()
-             .requestHandler(router)
-             .listen(HTTP_PORT)
-             .onSuccess(server -> {
-                 logger.info("HTTP server started on port {}", HTTP_PORT);
-                 logger.info("Worker pool '{}' created with {} threads", WORKER_POOL_NAME, WORKER_POOL_SIZE);
-             })
-             .onFailure(throwable -> {
-                 logger.error("Failed to start HTTP server", throwable);
-                 System.exit(1);
-             });
     }
 }
