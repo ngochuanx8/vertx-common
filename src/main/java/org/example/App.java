@@ -68,14 +68,14 @@ public class App {
         // Create HTTP server
         vertx.createHttpServer()
              .requestHandler(router)
-             .listen(HTTP_PORT, result -> {
-                 if (result.succeeded()) {
-                     logger.info("HTTP server started on port {}", HTTP_PORT);
-                     logger.info("Worker pool '{}' created with {} threads", WORKER_POOL_NAME, WORKER_POOL_SIZE);
-                 } else {
-                     logger.error("Failed to start HTTP server", result.cause());
-                     System.exit(1);
-                 }
+             .listen(HTTP_PORT)
+             .onSuccess(server -> {
+                 logger.info("HTTP server started on port {}", HTTP_PORT);
+                 logger.info("Worker pool '{}' created with {} threads", WORKER_POOL_NAME, WORKER_POOL_SIZE);
+             })
+             .onFailure(throwable -> {
+                 logger.error("Failed to start HTTP server", throwable);
+                 System.exit(1);
              });
     }
 }
