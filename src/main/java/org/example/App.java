@@ -2,8 +2,15 @@ package org.example;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
+import org.example.controller.AbstractHttpController;
+import org.example.controller.UserController;
+import org.example.controller.OrderController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.function.BiFunction;
+import io.vertx.core.WorkerExecutor;
 
 public class App {
     
@@ -32,13 +39,19 @@ public class App {
         
         Vertx vertx = Vertx.vertx(options);
         
-        // Deploy multiple instances of the HTTP server verticle
+        // Create controller factories for dependency injection
+        List<BiFunction<Vertx, WorkerExecutor, AbstractHttpController>> controllerFactories = List.of(
+            UserController::new,
+            OrderController::new
+        );
+        
+        // Deploy multiple instances of the HTTP server verticle with injected controllers
         // Vert.x will automatically distribute them across event loop threads
         // and handle request sharing using round-robin
         io.vertx.core.DeploymentOptions deploymentOptions = new io.vertx.core.DeploymentOptions()
             .setInstances(verticleInstances);
         
-        vertx.deployVerticle("org.example.HttpServerVerticle", deploymentOptions, result -> {
+        vertx.deployVerticle(() -> new HttpServerVerticle(controllerFactories), deploymentOptions, result -> {
             if (result.succeeded()) {
                 logger.info("Successfully deployed {} HttpServerVerticle instances", verticleInstances);
                 logger.info("Deployment ID: {}", result.result());

@@ -2,9 +2,11 @@ package org.example;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.Promise;
+import io.vertx.core.Vertx;
 import io.vertx.core.WorkerExecutor;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
+import org.example.controller.AbstractHttpController;
 import org.example.controller.UserController;
 import org.example.controller.OrderController;
 import org.example.util.ControllerRegistry;
@@ -12,16 +14,31 @@ import org.example.util.MonitoringEndpoints;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.function.BiFunction;
+
 public class HttpServerVerticle extends AbstractVerticle {
     
     private static final Logger logger = LoggerFactory.getLogger(HttpServerVerticle.class);
-    private static final int HTTP_PORT = 8080;
+    private static final int HTTP_PORT = 8888;
     private static final String WORKER_POOL_NAME = "worker-pool-verticle";
     private static final int WORKER_POOL_SIZE = 15;
     private static final long WORKER_MAX_EXECUTE_TIME = 60000; // 60 seconds
     
     private WorkerExecutor workerExecutor;
     private ControllerRegistry controllerRegistry;
+    private final List<BiFunction<Vertx, WorkerExecutor, AbstractHttpController>> controllerFactories;
+    
+    public HttpServerVerticle(List<BiFunction<Vertx, WorkerExecutor, AbstractHttpController>> controllerFactories) {
+        this.controllerFactories = controllerFactories;
+    }
+    
+    public HttpServerVerticle() {
+        this.controllerFactories = List.of(
+            UserController::new,
+            OrderController::new
+        );
+    }
     
     @Override
     public void start(Promise<Void> startPromise) {
@@ -83,13 +100,15 @@ public class HttpServerVerticle extends AbstractVerticle {
     }
     
     private void setupControllers(Router router) {
-        // Initialize controller registry and auto-inject controllers
+        // Initialize controller registry
         controllerRegistry = new ControllerRegistry();
         controllerRegistry.registerControllers(vertx, workerExecutor);
         
-        // Register controllers directly
-        controllerRegistry.addController(new UserController(vertx, workerExecutor));
-        controllerRegistry.addController(new OrderController(vertx, workerExecutor));
+        // Create controllers using factories
+        for (BiFunction<Vertx, WorkerExecutor, AbstractHttpController> factory : controllerFactories) {
+            AbstractHttpController controller = factory.apply(vertx, workerExecutor);
+            controllerRegistry.addController(controller);
+        }
         
         controllerRegistry.setupRoutes(router);
         
