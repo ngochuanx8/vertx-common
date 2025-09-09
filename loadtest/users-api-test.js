@@ -69,23 +69,45 @@ export default function (data) {
     }
   }
   
-  // Execute selected scenario
-  switch (selectedScenario) {
-    case 'getAllUsers':
-      testGetAllUsers(baseUrl);
-      break;
-    case 'getUserById':
-      testGetUserById(baseUrl);
-      break;
-    case 'createUser':
-      testCreateUser(baseUrl);
-      break;
-    case 'updateUser':
-      testUpdateUser(baseUrl);
-      break;
-    case 'deleteUser':
-      testDeleteUser(baseUrl);
-      break;
+  // Execute selected scenario - randomly choose between Users and Orders
+  const isOrderScenario = Math.random() < 0.3; // 30% orders, 70% users
+  
+  if (isOrderScenario) {
+    switch (selectedScenario) {
+      case 'getAllUsers':
+        testGetAllOrders(baseUrl);
+        break;
+      case 'getUserById':
+        testGetOrderById(baseUrl);
+        break;
+      case 'createUser':
+        testCreateOrder(baseUrl);
+        break;
+      case 'updateUser':
+        testUpdateOrder(baseUrl);
+        break;
+      case 'deleteUser':
+        testDeleteOrder(baseUrl);
+        break;
+    }
+  } else {
+    switch (selectedScenario) {
+      case 'getAllUsers':
+        testGetAllUsers(baseUrl);
+        break;
+      case 'getUserById':
+        testGetUserById(baseUrl);
+        break;
+      case 'createUser':
+        testCreateUser(baseUrl);
+        break;
+      case 'updateUser':
+        testUpdateUser(baseUrl);
+        break;
+      case 'deleteUser':
+        testDeleteUser(baseUrl);
+        break;
+    }
   }
   
   // Random sleep between requests (0.1-1 second)
@@ -210,6 +232,149 @@ function testDeleteUser(baseUrl) {
     const result = check(deleteResponse, {
       'DELETE /api/users/:id status is 200': (r) => r.status === 200,
       'DELETE /api/users/:id response time < 400ms': (r) => r.timings.duration < 400,
+    });
+    
+    errorRate.add(!result);
+  }
+}
+
+// Order API test functions
+function testGetAllOrders(baseUrl) {
+  const response = http.get(`${baseUrl}/api/orders`);
+  
+  const result = check(response, {
+    'GET /api/orders status is 200': (r) => r.status === 200,
+    'GET /api/orders response time < 500ms': (r) => r.timings.duration < 500,
+    'GET /api/orders has valid JSON': (r) => {
+      try {
+        JSON.parse(r.body);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
+  });
+  
+  errorRate.add(!result);
+}
+
+function testGetOrderById(baseUrl) {
+  const orderId = Math.random() < 0.7 ? (Math.random() < 0.5 ? 'order-1' : 'order-2') : `order-${Date.now()}`;
+  
+  const response = http.get(`${baseUrl}/api/orders/${orderId}`);
+  
+  const result = check(response, {
+    'GET /api/orders/:id status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+    'GET /api/orders/:id response time < 300ms': (r) => r.timings.duration < 300,
+  });
+  
+  if (response.status === 200) {
+    check(response, {
+      'GET /api/orders/:id has valid order JSON': (r) => {
+        try {
+          const order = JSON.parse(r.body);
+          return order.id && order.customerId && order.items;
+        } catch (e) {
+          return false;
+        }
+      },
+    });
+  }
+  
+  errorRate.add(!result);
+}
+
+function testCreateOrder(baseUrl) {
+  const testOrder = {
+    customerId: `customer-${Math.floor(Math.random() * 1000)}`,
+    items: [
+      {
+        productId: `prod-${Math.floor(Math.random() * 100)}`,
+        productName: `Product ${Math.floor(Math.random() * 100)}`,
+        quantity: Math.floor(Math.random() * 5) + 1,
+        unitPrice: (Math.random() * 100 + 10).toFixed(2)
+      }
+    ]
+  };
+  
+  const response = http.post(
+    `${baseUrl}/api/orders`,
+    JSON.stringify(testOrder),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  
+  const result = check(response, {
+    'POST /api/orders status is 201': (r) => r.status === 201,
+    'POST /api/orders response time < 800ms': (r) => r.timings.duration < 800,
+    'POST /api/orders returns created order': (r) => {
+      try {
+        const order = JSON.parse(r.body);
+        return order.id && order.customerId === testOrder.customerId;
+      } catch (e) {
+        return false;
+      }
+    },
+  });
+  
+  errorRate.add(!result);
+}
+
+function testUpdateOrder(baseUrl) {
+  const orderId = Math.random() < 0.5 ? 'order-1' : 'order-2';
+  const updatedOrder = {
+    customerId: `updated-customer-${Date.now()}`,
+    items: [
+      {
+        productId: 'updated-prod-1',
+        productName: 'Updated Product',
+        quantity: 2,
+        unitPrice: '49.99'
+      }
+    ]
+  };
+  
+  const response = http.put(
+    `${baseUrl}/api/orders/${orderId}`,
+    JSON.stringify(updatedOrder),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  
+  const result = check(response, {
+    'PUT /api/orders/:id status is 200 or 404': (r) => r.status === 200 || r.status === 404,
+    'PUT /api/orders/:id response time < 600ms': (r) => r.timings.duration < 600,
+  });
+  
+  errorRate.add(!result);
+}
+
+function testDeleteOrder(baseUrl) {
+  // Create a temporary order first, then delete it
+  const tempOrder = {
+    customerId: `temp-customer-${Date.now()}`,
+    items: [
+      {
+        productId: 'temp-prod',
+        productName: 'Temp Product',
+        quantity: 1,
+        unitPrice: '9.99'
+      }
+    ]
+  };
+  
+  const createResponse = http.post(
+    `${baseUrl}/api/orders`,
+    JSON.stringify(tempOrder),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  
+  if (createResponse.status === 201) {
+    const createdOrder = JSON.parse(createResponse.body);
+    
+    const deleteResponse = http.del(`${baseUrl}/api/orders/${createdOrder.id}`);
+    
+    const result = check(deleteResponse, {
+      'DELETE /api/orders/:id status is 200': (r) => r.status === 200,
+      'DELETE /api/orders/:id response time < 400ms': (r) => r.timings.duration < 400,
     });
     
     errorRate.add(!result);
