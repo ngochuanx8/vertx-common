@@ -4,8 +4,6 @@ import io.vertx.core.Vertx;
 import io.vertx.core.WorkerExecutor;
 import io.vertx.ext.web.Router;
 import org.example.controller.AbstractHttpController;
-import org.example.controller.OrderController;
-import org.example.controller.UserController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,11 +18,13 @@ public class ControllerRegistry {
     public void registerControllers(Vertx vertx, WorkerExecutor workerExecutor) {
         logger.info("Registering HTTP controllers...");
         
-        // Auto-register controllers here
-        controllers.add(new UserController(vertx, workerExecutor));
-        controllers.add(new OrderController(vertx, workerExecutor));
+        // Controllers are now registered externally
         
         logger.info("Registered {} controllers", controllers.size());
+    }
+    
+    public void addController(AbstractHttpController controller) {
+        controllers.add(controller);
     }
     
     public void setupRoutes(Router router) {

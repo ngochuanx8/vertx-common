@@ -5,6 +5,8 @@ import io.vertx.core.Promise;
 import io.vertx.core.WorkerExecutor;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.handler.BodyHandler;
+import org.example.controller.UserController;
+import org.example.controller.OrderController;
 import org.example.util.ControllerRegistry;
 import org.example.util.MonitoringEndpoints;
 import org.slf4j.Logger;
@@ -84,6 +86,11 @@ public class HttpServerVerticle extends AbstractVerticle {
         // Initialize controller registry and auto-inject controllers
         controllerRegistry = new ControllerRegistry();
         controllerRegistry.registerControllers(vertx, workerExecutor);
+        
+        // Register controllers directly
+        controllerRegistry.addController(new UserController(vertx, workerExecutor));
+        controllerRegistry.addController(new OrderController(vertx, workerExecutor));
+        
         controllerRegistry.setupRoutes(router);
         
         logger.info("Auto-injected {} controllers", controllerRegistry.getControllers().size());
